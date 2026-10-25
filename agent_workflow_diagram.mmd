@@ -1,0 +1,44 @@
+%% Munder Difflin multi-agent workflow (4 agents: 1 orchestrator + 3 workers)
+%% Render at https://mermaid.live or with: npx -p @mermaid-js/mermaid-cli mmdc -i agent_workflow_diagram.mmd -o agent_workflow_diagram.png
+flowchart TD
+    C([Customer request<br/>text + request date]) --> O
+
+    subgraph ORCH["Orchestrator Agent (orchestrator_agent)"]
+        O[Parse request + deadline<br/>delegate in order<br/>write customer reply]
+    end
+
+    O -- "1 assess_inventory(request_text, deadline)" --> INV
+    O -- "2 prepare_quote(customer_context)<br/>only if something was secured" --> QUO
+    O -- "3 finalize_order()<br/>only if a quote exists" --> FUL
+    O --> R([Customer response<br/>delivered items, dates, total,<br/>reasons for anything rejected])
+
+    subgraph INVG["Inventory Agent (inventory_agent)"]
+        INV[Map wording to catalog names<br/>apply restock policy]
+        T1[list_catalog<br/>CATALOG / inventory table]
+        T2[get_inventory_snapshot<br/>get_all_inventory]
+        T3[check_and_secure_stock<br/>get_stock_level<br/>get_supplier_delivery_date<br/>get_cash_balance<br/>create_transaction 'stock_orders']
+        INV --> T1 & T2 & T3
+    end
+
+    subgraph QUOG["Quoting Agent (quoting_agent)"]
+        QUO[Price secured items<br/>explain bulk discount]
+        T4[search_past_quotes<br/>search_quote_history]
+        T5[calculate_quote<br/>list price = cost x 1.20<br/>5% / 10% / 15% at 500 / 1000 / 5000 units]
+        QUO --> T4 & T5
+    end
+
+    subgraph FULG["Fulfillment Agent (fulfillment_agent)"]
+        FUL[Health checks then record sale]
+        T6[check_cash_balance<br/>get_cash_balance]
+        T7[financial_health_check<br/>generate_financial_report<br/>required when quote > $500]
+        T8[fulfill_quoted_order<br/>get_stock_level<br/>create_transaction 'sales']
+        FUL --> T6 & T7 & T8
+    end
+
+    T3 & T8 <--> DB[(SQLite munder_difflin.db<br/>transactions, inventory,<br/>quotes, quote_requests<br/>built by init_database +<br/>generate_sample_inventory)]
+    T1 & T2 & T4 & T6 & T7 --> DB
+
+    S{{Shared RequestContext deps:<br/>request_date, deadline,<br/>secured items, ready dates, quote}}
+    S -.- INV
+    S -.- QUO
+    S -.- FUL
